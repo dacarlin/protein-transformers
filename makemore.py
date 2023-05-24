@@ -15,6 +15,7 @@ from torch.utils.data import Dataset
 from torch.utils.data.dataloader import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from biotite.sequence.io.fasta import FastaFile 
+from tokenizers import Tokenizer
 
 # -----------------------------------------------------------------------------
 
@@ -223,28 +224,28 @@ def evaluate(model, dataset, batch_size=50, max_batches=None):
     return mean_loss
 
 # -----------------------------------------------------------------------------
-# helper functions for creating the training and test Datasets that emit words
+# helper functions for creating the training and test Datasets that emit proteins
 
 class ProteinDataset(Dataset):
 
-    def __init__(self, words, chars, max_word_length):
-        self.words = words
+    def __init__(self, proteins, chars, max_word_length):
+        self.proteins = proteins
         self.chars = chars
         self.max_word_length = max_word_length
         self.stoi = {ch:i+1 for i,ch in enumerate(chars)}
         self.itos = {i:s for s,i in self.stoi.items()} # inverse mapping
 
     def __len__(self):
-        return len(self.words)
+        return len(self.proteins)
 
     def contains(self, word):
-        return word in self.words
+        return word in self.proteins
 
     def get_vocab_size(self):
         return len(self.chars) + 1 # all the possible characters and special 0 token
 
     def get_output_length(self):
-        return self.max_word_length + 1 # <START> token followed by words
+        return self.max_word_length + 1 # <START> token followed by proteins
 
     def encode(self, word):
         ix = torch.tensor([self.stoi[w] for w in word], dtype=torch.long)
@@ -255,7 +256,7 @@ class ProteinDataset(Dataset):
         return word
 
     def __getitem__(self, idx):
-        word = self.words[idx]
+        word = self.proteins[idx]
         ix = self.encode(word)
         x = torch.zeros(self.max_word_length + 1, dtype=torch.long)
         y = torch.zeros(self.max_word_length + 1, dtype=torch.long)
@@ -264,40 +265,84 @@ class ProteinDataset(Dataset):
         y[len(ix)+1:] = -1 # index -1 will mask the loss at the inactive locations
         return x, y
 
-def create_datasets(input_file):
+
+class BpeProteinDataset(Dataset):
+
+    def __init__(self, proteins, tokenizer, max_word_length):
+        self.proteins = proteins
+        self.tokenizer = tokenizer 
+        self.max_word_length = max_word_length
+
+    def __len__(self):
+        return len(self.proteins) 
+
+    def contains(self, word):
+        return word in self.proteins 
+
+    def get_vocab_size(self):
+        return self.tokenizer.get_vocab_size()
+
+    def get_output_length(self):
+        return self.max_word_length + 1 # <START> token followed by proteins
+
+    def encode(self, word):
+        return torch.tensor(self.tokenizer.encode(word).ids, dtype=torch.long)
+
+    def decode(self, ix):
+        return self.tokenizer.decode(ix).tokens
+
+    def __getitem__(self, idx):
+        word = self.proteins[idx]
+        ix = self.encode(word) 
+        x = torch.zeros(self.max_word_length + 1, dtype=torch.long)
+        y = torch.zeros(self.max_word_length + 1, dtype=torch.long)
+        x[1:1+len(ix)] = ix
+        y[:len(ix)] = ix
+        y[len(ix)+1:] = -1   # index -1 will mask the loss at inactive locations 
+        return x, y
+
+
+def create_datasets(input_file, min_sequence_length=256, max_sequence_length=512, tokenizer=None):
 
     # preprocessing of the input text file
-    min_sequence_length, max_sequence_length = 256, 512   
     proteins = []
     fasta_file = FastaFile.read(input_file) 
     for header, sequence in fasta_file.items():
-        print(header)
         n = len(sequence) 
         if n >= min_sequence_length and n <= max_sequence_length:
-            print(sequence)
             proteins.append(sequence)
-
-
-    chars = sorted(list(set(''.join(proteins)))) # all the possible characters
     max_word_length = max(len(w) for w in proteins)
-    print(f"number of examples in the dataset: {len(proteins)}")
-    print(f"max protein length: {max_word_length}")
-    print(f"number of unique characters in the vocabulary: {len(chars)}")
-    print("vocabulary:")
-    print(''.join(chars))
 
     # partition the input data into a training and the test set
     test_set_size = min(1000, int(len(proteins) * 0.1)) # 10% of the training set, or up to 1000 examples
     rp = torch.randperm(len(proteins)).tolist()
-    train_words = [proteins[i] for i in rp[:-test_set_size]]
-    test_words = [proteins[i] for i in rp[-test_set_size:]]
-    print(f"split up the dataset into {len(train_words)} training examples and {len(test_words)} test examples")
+    train_proteins = [proteins[i] for i in rp[:-test_set_size]]
+    test_proteins = [proteins[i] for i in rp[-test_set_size:]]
+    print(f"split up the dataset into {len(train_proteins)} training examples and {len(test_proteins)} test examples")
 
-    # wrap in dataset objects
-    train_dataset = ProteinDataset(train_words, chars, max_word_length)
-    test_dataset = ProteinDataset(test_words, chars, max_word_length)
+    if not tokenizer:
+        chars = sorted(list(set(''.join(proteins)))) # all the possible characters
+        tokens = sum(len(w) for w in proteins)
+        
+        print("using characters as tokens")
+        print(f"number of examples in the dataset: {len(proteins)}")
+        print(f"max protein length: {max_word_length}")
+        print(f"number of unique characters in the vocabulary: {len(chars)}")
+        print("vocabulary:")
+        print(''.join(chars))
+        print(f"total tokens: {tokens}")
+
+        # wrap in dataset objects
+        train_dataset = ProteinDataset(train_proteins, chars, max_word_length)
+        test_dataset = ProteinDataset(test_proteins, chars, max_word_length)
+    else:
+        print(f"using tokenizer from: {tokenizer}") 
+        tokenizer = Tokenizer.from_file(tokenizer)
+        train_dataset = BpeProteinDataset(train_proteins, tokenizer, max_word_length) 
+        test_dataset = BpeProteinDataset(test_proteins, tokenizer, max_word_length) 
 
     return train_dataset, test_dataset
+
 
 class InfiniteDataLoader:
     """
@@ -323,7 +368,8 @@ if __name__ == '__main__':
     # parse command line args
     parser = argparse.ArgumentParser(description="Make More")
     # system/input/output
-    parser.add_argument('--input-file', '-i', type=str, default='names.txt', help="input file with things one per line")
+    parser.add_argument('--input-file', '-i', type=str, default='proteins.fa', help="input fasta file")
+    parser.add_argument('--tokenizer', type=str, default=None, help="path of tokenizer json")
     parser.add_argument('--work-dir', '-o', type=str, default='out', help="output working directory")
     parser.add_argument('--resume', action='store_true', help="when this flag is used, we will resume optimization from existing model in the workdir")
     parser.add_argument('--sample-only', action='store_true', help="just sample from the model and quit, don't train")
@@ -334,7 +380,6 @@ if __name__ == '__main__':
     # sampling
     parser.add_argument('--top-k', type=int, default=-1, help="top-k for sampling, -1 means no top-k")
     # model
-    parser.add_argument('--type', type=str, default='transformer', help="model class type to use, bigram|mlp|rnn|gru|bow|transformer")
     parser.add_argument('--n-layer', type=int, default=4, help="number of layers")
     parser.add_argument('--n-head', type=int, default=4, help="number of heads (in a transformer)")
     parser.add_argument('--n-embd', type=int, default=64, help="number of feature channels in the model")
@@ -353,7 +398,7 @@ if __name__ == '__main__':
     writer = SummaryWriter(log_dir=args.work_dir)
 
     # init datasets
-    train_dataset, test_dataset = create_datasets(args.input_file)
+    train_dataset, test_dataset = create_datasets(args.input_file, tokenizer=args.tokenizer)
     vocab_size = train_dataset.get_vocab_size()
     block_size = train_dataset.get_output_length()
     print(f"dataset determined that: {vocab_size=}, {block_size=}")
