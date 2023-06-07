@@ -1,4 +1,24 @@
-"""Adapted from Karpathy's makemore. Thanks Andrej!"""
+"""Adapted from Karpathy's makemore. Thanks Andrej!
+
+you give this script some words (one per line) and it will generate more things like it.
+uses super state of the art Transformer AI tech
+this code is intended to be super hackable. tune it to your needs.
+
+Changes from makemore 
+- I removed models other than `Transformer` because they aren't necessary
+  to understand how to use transformer models for protein sequences 
+- I updated the dataloaders to work with FASTA files 
+- I updated the code to accept a HuggingFace tokenizer to explore 
+  different tokenization schemes 
+
+Changes from minGPT:
+- I removed the from_pretrained function where we init with GPT2 weights
+- I removed dropout layers because the models we train here are small,
+  it's not necessary to understand at this stage and at this scale.
+- I removed weight decay and all of the complexity around what parameters are
+  and are not weight decayed. I don't believe this should make a massive
+  difference at the scale that we operate on here.
+"""
 
 import os
 import sys
@@ -80,6 +100,7 @@ class CausalSelfAttention(nn.Module):
         y = self.c_proj(y)
         return y
 
+
 class Block(nn.Module):
     """ an unassuming Transformer block """
 
@@ -100,6 +121,7 @@ class Block(nn.Module):
         x = x + self.attn(self.ln_1(x))
         x = x + self.mlpf(self.ln_2(x))
         return x
+
 
 class Transformer(nn.Module):
     """ Transformer Language Model, exactly as seen in GPT-2 """
@@ -366,7 +388,7 @@ class InfiniteDataLoader:
 if __name__ == '__main__':
 
     # parse command line args
-    parser = argparse.ArgumentParser(description="Make More")
+    parser = argparse.ArgumentParser(description="Make more proteins")
     # system/input/output
     parser.add_argument('--input-file', '-i', type=str, default='proteins.fa', help="input fasta file")
     parser.add_argument('--tokenizer', type=str, default=None, help="path of tokenizer json")
@@ -412,7 +434,7 @@ if __name__ == '__main__':
     print(f"model #params: {sum(p.numel() for p in model.parameters())}")
     if args.resume or args.sample_only: # note: if we sample-only then we also assume we are resuming
         print("resuming from existing model in the workdir")
-        model.load_state_dict(torch.load(os.path.join(args.work_dir, 'model.pt')))
+        model.load_state_dict(torch.load(os.path.join(args.work_dir, 'model.pt'), map_location=torch.device(args.device)))
     if args.sample_only:
         print_samples(num=50)
         sys.exit()
