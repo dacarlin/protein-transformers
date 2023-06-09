@@ -1,18 +1,33 @@
-# set up 
+# Simple, hackable protein transformers 
 
-conda create --name makemore python=3.11 
-conda activate makemore 
+Inspired by Karpathy's makemore, the goal of this project is to provide a simple hackable implementation of protein transformer models for education and research. 
+
+
+## Install 
+
+Install with Conda 
+
+```
+conda create --name ppt python=3.11 
+conda activate ppt 
 pip install tensorboard torch biotite 
+```
 
+## Example: training on a homologous sequence family 
 
-# to train on a FASTA dataset 
+As an example, we can use sequence homologs from the [BglB family](https://github.com/dacarlin/enzyme-ml-benchmarks) to train a protein transformer capable of designing new enzymes that fold and function the same way as the proteins in the training set 
 
-python makemore.py -i dataset/bglb.fa -o bglb 
+To train on a FASTA dataset: 
 
+```
+python ppt.py -i dataset/bglb.fa -o bglb 
+```
 
-# if you just want to sample from a model (data will be written in FASTA format) 
+Once the model is trained, and you would like to sample (data will be written in FASTA format):
 
-python makemore.py -o bglb --sample_only 
+```
+python ppt.py -o bglb --sample-only 
+```
 
 
 
