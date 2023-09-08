@@ -1,6 +1,6 @@
 # Simple, hackable protein transformers 
 
-Inspired by Karpathy's makemore, the goal of this project is to provide a simple hackable implementation of protein transformer models for education and research. 
+Inspired by Karpathy's makemore (which deploys several different models for a character-level next-token prediction task), the goal of this project is to provide a simple, hackable implementation of protein transformer models for education and research. 
 
 
 ## Install 
@@ -8,8 +8,8 @@ Inspired by Karpathy's makemore, the goal of this project is to provide a simple
 Install with Conda 
 
 ```
-conda create --name ppt python=3.11 
-conda activate ppt 
+conda create --name protein python=3.11 
+conda activate protein 
 pip install tensorboard torch biotite 
 ```
 
@@ -20,14 +20,21 @@ As an example, we can use sequence homologs from the [BglB family](https://githu
 To train on a FASTA dataset: 
 
 ```
-python ppt.py -i dataset/bglb.fa -o bglb 
+python main.py -i dataset/bglb.fa -o bglb 
 ```
 
 Once the model is trained, and you would like to sample (data will be written in FASTA format):
 
 ```
-python ppt.py -o bglb --sample-only 
+python main.py -o bglb --sample-only 
 ```
+
+## Model 
+
+The model used here is a transformer based on GPT-2, trained with a next-token completion task
+
+
+
 
 
 
