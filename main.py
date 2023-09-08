@@ -331,7 +331,7 @@ def create_datasets(input_file, min_sequence_length=256, max_sequence_length=512
     fasta_file = FastaFile.read(input_file) 
     for header, sequence in fasta_file.items():
         n = len(sequence) 
-        if n >= min_sequence_length and n <= max_sequence_length:
+        if n >= min_sequence_length and n < max_sequence_length:
             proteins.append(sequence)
     max_word_length = max(len(w) for w in proteins)
 
@@ -440,20 +440,37 @@ if __name__ == '__main__':
         sys.exit()
 
     # init optimizer
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay, betas=(0.9, 0.99), eps=1e-8)
+    optimizer = torch.optim.AdamW(
+        model.parameters(), 
+        lr=args.learning_rate, 
+        weight_decay=args.weight_decay, 
+        betas=(0.9, 0.99), eps=1e-8)
 
     # init dataloader
-    batch_loader = InfiniteDataLoader(train_dataset, batch_size=args.batch_size, pin_memory=True, num_workers=args.num_workers)
+    # batch_loader = InfiniteDataLoader(train_dataset, 
+    #                                   batch_size=args.batch_size, 
+    #                                   pin_memory=True, 
+    #                                   num_workers=args.num_workers)
+
+    def cycle(loader):
+        while True:
+            for data in loader:
+                yield data
+
+    train_loader = DataLoader(train_dataset, 
+                              batch_size=args.batch_size, 
+                              sampler=torch.utils.data.RandomSampler(train_dataset, replacement=True, num_samples=int(1e10)),
+                              pin_memory=True, 
+                              num_workers=args.num_workers)
 
     # training loop
     best_loss = None
     step = 0
-    while True:
+    for batch in cycle(train_loader):
 
         t0 = time.time()
 
         # get the next batch, ship to device, and unpack it to input and target
-        batch = batch_loader.next()
         batch = [t.to(args.device) for t in batch]
         X, Y = batch
 
