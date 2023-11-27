@@ -37,20 +37,15 @@ from torch.utils.tensorboard import SummaryWriter
 from biotite.sequence.io.fasta import FastaFile 
 from tokenizers import Tokenizer
 
-# -----------------------------------------------------------------------------
 
 @dataclass
 class ModelConfig:
     block_size: int = None # length of the input sequences of integers
     vocab_size: int = None # the input integers are in range [0 .. vocab_size -1]
-    # parameters below control the sizes of each model slightly differently
     n_layer: int = 4
     n_embd: int = 64
-    n_embd2: int = 64
     n_head: int = 4
 
-# -----------------------------------------------------------------------------
-# Transformer Language Model (*exactly* as used in GPT-2)
 
 class NewGELU(nn.Module):
     """
@@ -59,6 +54,7 @@ class NewGELU(nn.Module):
     """
     def forward(self, x):
         return 0.5 * x * (1.0 + torch.tanh(math.sqrt(2.0 / math.pi) * (x + 0.044715 * torch.pow(x, 3.0))))
+
 
 class CausalSelfAttention(nn.Module):
     """
@@ -245,8 +241,6 @@ def evaluate(model, dataset, batch_size=50, max_batches=None):
     model.train() # reset model back to training mode
     return mean_loss
 
-# -----------------------------------------------------------------------------
-# helper functions for creating the training and test Datasets that emit proteins
 
 class ProteinDataset(Dataset):
 
@@ -289,6 +283,7 @@ class ProteinDataset(Dataset):
 
 
 class BpeProteinDataset(Dataset):
+    """Dataset of protein sequences that is encoded using a byte-pair encoding"""
 
     def __init__(self, proteins, tokenizer, max_word_length):
         self.proteins = proteins
@@ -324,7 +319,8 @@ class BpeProteinDataset(Dataset):
         return x, y
 
 
-def create_datasets(input_file, min_sequence_length=256, max_sequence_length=512, tokenizer=None):
+def create_datasets(input_file, split_ratio=0.1, min_sequence_length=32, max_sequence_length=512, tokenizer=None):
+    """Create the `train_dataset` and `test_dataset`"""
 
     # preprocessing of the input text file
     proteins = []
@@ -336,7 +332,7 @@ def create_datasets(input_file, min_sequence_length=256, max_sequence_length=512
     max_word_length = max(len(w) for w in proteins)
 
     # partition the input data into a training and the test set
-    test_set_size = min(1000, int(len(proteins) * 0.1)) # 10% of the training set, or up to 1000 examples
+    test_set_size = min(1000, int(len(proteins) * split_ratio)) 
     rp = torch.randperm(len(proteins)).tolist()
     train_proteins = [proteins[i] for i in rp[:-test_set_size]]
     test_proteins = [proteins[i] for i in rp[-test_set_size:]]
@@ -345,7 +341,6 @@ def create_datasets(input_file, min_sequence_length=256, max_sequence_length=512
     if not tokenizer:
         chars = sorted(list(set(''.join(proteins)))) # all the possible characters
         tokens = sum(len(w) for w in proteins)
-        
         print("using characters as tokens")
         print(f"number of examples in the dataset: {len(proteins)}")
         print(f"max protein length: {max_word_length}")
@@ -366,25 +361,6 @@ def create_datasets(input_file, min_sequence_length=256, max_sequence_length=512
     return train_dataset, test_dataset
 
 
-class InfiniteDataLoader:
-    """
-    this is really hacky and I'm not proud of it, but there doesn't seem to be
-    a better way in PyTorch to just create an infinite dataloader?
-    """
-    def __init__(self, dataset, **kwargs):
-        train_sampler = torch.utils.data.RandomSampler(dataset, replacement=True, num_samples=int(1e10))
-        self.train_loader = DataLoader(dataset, sampler=train_sampler, **kwargs)
-        self.data_iter = iter(self.train_loader)
-
-    def next(self):
-        try:
-            batch = next(self.data_iter)
-        except StopIteration: # this will technically only happen after 1e10 samples... (i.e. basically never)
-            self.data_iter = iter(self.train_loader)
-            batch = next(self.data_iter)
-        return batch
-
-# -----------------------------------------------------------------------------
 if __name__ == '__main__':
 
     # parse command line args
@@ -428,7 +404,7 @@ if __name__ == '__main__':
     # init model
     config = ModelConfig(vocab_size=vocab_size, block_size=block_size,
                        n_layer=args.n_layer, n_head=args.n_head,
-                       n_embd=args.n_embd, n_embd2=args.n_embd2)
+                       n_embd=args.n_embd)
     model = Transformer(config)
     model.to(args.device)
     print(f"model #params: {sum(p.numel() for p in model.parameters())}")
