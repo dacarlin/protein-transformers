@@ -1,6 +1,26 @@
 # Simple, hackable protein transformers 
 
-Inspired by Karpathy's makemore (which deploys several different models for a character-level next-token prediction task), the goal of this project is to provide a simple, hackable implementation of protein transformer models for education and research. 
+The goal of this project is to provide a simple, hackable implementation of protein transformer models for education and research. Inspired by Karpathy's simple, hackable approach in the [makemore](https://github.com/karpathy/makemore) series. 
+
+
+## Code contents 
+
+There are three main sections, all implemented in PyTorch:
+
+- protein data loaders and tokenizers 
+- transformer model ("decoder only")
+- training loop 
+
+
+### Protein data loaders 
+
+There are two `Dataset`-like classes defined: `ProteinDataset` uses a character-level tokenizer (as used by ESM and all other protein language models I know about) and `BpeDataset`, which uses a BytePair encoding for tokenization. 
+
+Find the `ProteinDataset` and `BpeDataset` classes defined in `data.py`. An example of using the `ProteinDataset` class: 
+
+```python 
+
+```
 
 
 ## Install 

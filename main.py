@@ -37,8 +37,9 @@ from torch.utils.tensorboard import SummaryWriter
 from biotite.sequence.io.fasta import FastaFile 
 from tokenizers import Tokenizer
 
-# -----------------------------------------------------------------------------
 
+# -----------------------------------------------------------------------------
+# Configuration class 
 @dataclass
 class ModelConfig:
     block_size: int = None # length of the input sequences of integers
@@ -46,7 +47,6 @@ class ModelConfig:
     # parameters below control the sizes of each model slightly differently
     n_layer: int = 4
     n_embd: int = 64
-    n_embd2: int = 64
     n_head: int = 4
 
 # -----------------------------------------------------------------------------
@@ -59,6 +59,7 @@ class NewGELU(nn.Module):
     """
     def forward(self, x):
         return 0.5 * x * (1.0 + torch.tanh(math.sqrt(2.0 / math.pi) * (x + 0.044715 * torch.pow(x, 3.0))))
+
 
 class CausalSelfAttention(nn.Module):
     """
@@ -245,17 +246,18 @@ def evaluate(model, dataset, batch_size=50, max_batches=None):
     model.train() # reset model back to training mode
     return mean_loss
 
-# -----------------------------------------------------------------------------
-# helper functions for creating the training and test Datasets that emit proteins
+# ---------------------------------------------------------------------
+# Datasets for protein sequences and BytePair-encoded protein sequences 
 
 class ProteinDataset(Dataset):
+    """Dataset for protein sequences with character-level tokenization"""
 
-    def __init__(self, proteins, chars, max_word_length):
+    def __init__(self, proteins, chars, max_protein_length):
         self.proteins = proteins
         self.chars = chars
-        self.max_word_length = max_word_length
-        self.stoi = {ch:i+1 for i,ch in enumerate(chars)}
-        self.itos = {i:s for s,i in self.stoi.items()} # inverse mapping
+        self.max_protein_length = max_protein_length
+        self.stoi = {ch: i + 1 for i, ch in enumerate(chars)}
+        self.itos = {i: s for s, i in self.stoi.items()} # inverse mapping
 
     def __len__(self):
         return len(self.proteins)
@@ -267,7 +269,7 @@ class ProteinDataset(Dataset):
         return len(self.chars) + 1 # all the possible characters and special 0 token
 
     def get_output_length(self):
-        return self.max_word_length + 1 # <START> token followed by proteins
+        return self.max_protein_length + 1 # <START> token followed by proteins
 
     def encode(self, word):
         ix = torch.tensor([self.stoi[w] for w in word], dtype=torch.long)
@@ -280,8 +282,8 @@ class ProteinDataset(Dataset):
     def __getitem__(self, idx):
         word = self.proteins[idx]
         ix = self.encode(word)
-        x = torch.zeros(self.max_word_length + 1, dtype=torch.long)
-        y = torch.zeros(self.max_word_length + 1, dtype=torch.long)
+        x = torch.zeros(self.max_protein_length + 1, dtype=torch.long)
+        y = torch.zeros(self.max_protein_length + 1, dtype=torch.long)
         x[1:1+len(ix)] = ix
         y[:len(ix)] = ix
         y[len(ix)+1:] = -1 # index -1 will mask the loss at the inactive locations
@@ -289,6 +291,7 @@ class ProteinDataset(Dataset):
 
 
 class BpeProteinDataset(Dataset):
+    """Dataset with BytePair-encoded protein sequences"""
 
     def __init__(self, proteins, tokenizer, max_word_length):
         self.proteins = proteins
@@ -366,25 +369,8 @@ def create_datasets(input_file, min_sequence_length=256, max_sequence_length=512
     return train_dataset, test_dataset
 
 
-class InfiniteDataLoader:
-    """
-    this is really hacky and I'm not proud of it, but there doesn't seem to be
-    a better way in PyTorch to just create an infinite dataloader?
-    """
-    def __init__(self, dataset, **kwargs):
-        train_sampler = torch.utils.data.RandomSampler(dataset, replacement=True, num_samples=int(1e10))
-        self.train_loader = DataLoader(dataset, sampler=train_sampler, **kwargs)
-        self.data_iter = iter(self.train_loader)
-
-    def next(self):
-        try:
-            batch = next(self.data_iter)
-        except StopIteration: # this will technically only happen after 1e10 samples... (i.e. basically never)
-            self.data_iter = iter(self.train_loader)
-            batch = next(self.data_iter)
-        return batch
-
 # -----------------------------------------------------------------------------
+# Parse arguments and run the training loop 
 if __name__ == '__main__':
 
     # parse command line args
@@ -403,12 +389,11 @@ if __name__ == '__main__':
     parser.add_argument('--top-k', type=int, default=-1, help="top-k for sampling, -1 means no top-k")
     # model
     parser.add_argument('--n-layer', type=int, default=4, help="number of layers")
-    parser.add_argument('--n-head', type=int, default=4, help="number of heads (in a transformer)")
+    parser.add_argument('--n-head', type=int, default=4, help="number of heads")
     parser.add_argument('--n-embd', type=int, default=64, help="number of feature channels in the model")
-    parser.add_argument('--n-embd2', type=int, default=64, help="number of feature channels elsewhere in the model")
     # optimization
     parser.add_argument('--batch-size', '-b', type=int, default=32, help="batch size during optimization")
-    parser.add_argument('--learning-rate', '-l', type=float, default=5e-4, help="learning rate")
+    parser.add_argument('--learning-rate', '-l', type=float, default=3e-3, help="learning rate")
     parser.add_argument('--weight-decay', '-w', type=float, default=0.01, help="weight decay")
     args = parser.parse_args()
     print(vars(args))
@@ -446,27 +431,22 @@ if __name__ == '__main__':
         weight_decay=args.weight_decay, 
         betas=(0.9, 0.99), eps=1e-8)
 
-    # init dataloader
-    # batch_loader = InfiniteDataLoader(train_dataset, 
-    #                                   batch_size=args.batch_size, 
-    #                                   pin_memory=True, 
-    #                                   num_workers=args.num_workers)
-
     def cycle(loader):
         while True:
             for data in loader:
                 yield data
 
-    train_loader = DataLoader(train_dataset, 
-                              batch_size=args.batch_size, 
-                              sampler=torch.utils.data.RandomSampler(train_dataset, replacement=True, num_samples=int(1e10)),
-                              pin_memory=True, 
-                              num_workers=args.num_workers)
+    train_loader = DataLoader(
+        train_dataset, 
+        batch_size=args.batch_size, 
+        sampler=torch.utils.data.RandomSampler(train_dataset, replacement=True, num_samples=int(1e10)),
+        pin_memory=True, 
+        num_workers=args.num_workers)
 
     # training loop
     best_loss = None
     step = 0
-    for batch in cycle(train_loader):
+    for batch in train_loader:
 
         t0 = time.time()
 
