@@ -170,7 +170,7 @@ class Transformer(nn.Module):
 
 
 @torch.no_grad()
-def generate(model, idx, max_new_tokens, temperature=1.0, do_sample=False, top_k=None):
+def generate(model, idx, max_new_tokens, temperature=1.0, greedy=False, top_k=None):
     """
     Take a conditioning sequence of indices idx (LongTensor of shape (b,t)) and complete
     the sequence max_new_tokens times, feeding the predictions back into the model each time.
@@ -190,11 +190,11 @@ def generate(model, idx, max_new_tokens, temperature=1.0, do_sample=False, top_k
             logits[logits < v[:, [-1]]] = -float('Inf')
         # apply softmax to convert logits to (normalized) probabilities
         probs = F.softmax(logits, dim=-1)
-        # either sample from the distribution or take the most likely element
-        if do_sample:
-            idx_next = torch.multinomial(probs, num_samples=1)
-        else:
+        # either take most likely (greedy) or sample from the distribution 
+        if greedy:
             _, idx_next = torch.topk(probs, k=1, dim=-1)
+        else:
+            idx_next = torch.multinomial(probs, num_samples=1)
         # append sampled index to the running sequence and continue
         idx = torch.cat((idx, idx_next), dim=1)
 
@@ -206,7 +206,7 @@ def print_samples(num=10):
     X_init = torch.zeros(num, 1, dtype=torch.long).to(args.device)
     top_k = args.top_k if args.top_k != -1 else None
     steps = train_dataset.get_output_length() - 1 # -1 because we already start with <START> token (index 0)
-    X_samp = generate(model, X_init, steps, top_k=top_k, do_sample=True).to('cpu')
+    X_samp = generate(model, X_init, steps, top_k=top_k, greedy=False).to('cpu')
     train_samples, test_samples, new_samples = [], [], []
     for i in range(X_samp.size(0)):
         # get the i'th row of sampled integers, as python list
@@ -327,19 +327,17 @@ class BpeProteinDataset(Dataset):
         return x, y
 
 
-def create_datasets(input_file, min_sequence_length=256, max_sequence_length=512, tokenizer=None):
+def create_datasets(input_file, tokenizer=None):
 
     # preprocessing of the input text file
     proteins = []
     fasta_file = FastaFile.read(input_file) 
     for header, sequence in fasta_file.items():
-        n = len(sequence) 
-        if n >= min_sequence_length and n < max_sequence_length:
-            proteins.append(sequence)
+        proteins.append(sequence)
     max_word_length = max(len(w) for w in proteins)
 
     # partition the input data into a training and the test set
-    test_set_size = min(1000, int(len(proteins) * 0.1)) # 10% of the training set, or up to 1000 examples
+    test_set_size = int(len(proteins) * 0.1) # 10% of the training set
     rp = torch.randperm(len(proteins)).tolist()
     train_proteins = [proteins[i] for i in rp[:-test_set_size]]
     test_proteins = [proteins[i] for i in rp[-test_set_size:]]
@@ -381,10 +379,9 @@ if __name__ == '__main__':
     parser.add_argument('--work-dir', '-o', type=str, default='out', help="output working directory")
     parser.add_argument('--resume', action='store_true', help="when this flag is used, we will resume optimization from existing model in the workdir")
     parser.add_argument('--sample-only', action='store_true', help="just sample from the model and quit, don't train")
-    parser.add_argument('--num-workers', '-n', type=int, default=4, help="number of data workers for both train/test")
-    parser.add_argument('--max-steps', type=int, default=-1, help="max number of optimization steps to run for, or -1 for infinite.")
+    parser.add_argument('--max-steps', type=int, default=75_000, help="max number of optimization steps to run for, or -1 for infinite.")
     parser.add_argument('--device', type=str, default='cpu', help="device to use for compute, examples: cpu|cuda|cuda:2|mps")
-    parser.add_argument('--seed', type=int, default=3407, help="seed")
+    parser.add_argument('--seed', type=int, default=42, help="seed")
     # sampling
     parser.add_argument('--top-k', type=int, default=-1, help="top-k for sampling, -1 means no top-k")
     # model
@@ -393,7 +390,7 @@ if __name__ == '__main__':
     parser.add_argument('--n-embd', type=int, default=64, help="number of feature channels in the model")
     # optimization
     parser.add_argument('--batch-size', '-b', type=int, default=32, help="batch size during optimization")
-    parser.add_argument('--learning-rate', '-l', type=float, default=3e-3, help="learning rate")
+    parser.add_argument('--learning-rate', '-l', type=float, default=4e-3, help="learning rate")
     parser.add_argument('--weight-decay', '-w', type=float, default=0.01, help="weight decay")
     args = parser.parse_args()
     print(vars(args))
@@ -413,7 +410,7 @@ if __name__ == '__main__':
     # init model
     config = ModelConfig(vocab_size=vocab_size, block_size=block_size,
                        n_layer=args.n_layer, n_head=args.n_head,
-                       n_embd=args.n_embd, n_embd2=args.n_embd2)
+                       n_embd=args.n_embd)
     model = Transformer(config)
     model.to(args.device)
     print(f"model #params: {sum(p.numel() for p in model.parameters())}")
@@ -440,8 +437,7 @@ if __name__ == '__main__':
         train_dataset, 
         batch_size=args.batch_size, 
         sampler=torch.utils.data.RandomSampler(train_dataset, replacement=True, num_samples=int(1e10)),
-        pin_memory=True, 
-        num_workers=args.num_workers)
+        pin_memory=True)
 
     # training loop
     best_loss = None

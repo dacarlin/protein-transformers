@@ -8,7 +8,7 @@ The goal of this project is to provide a simple, hackable implementation of prot
 There are three main sections, all implemented in PyTorch:
 
 - protein data loaders and tokenizers 
-- transformer model ("decoder only")
+- models (our first model is a "decoder only" transformer)
 - training loop 
 
 
@@ -19,40 +19,51 @@ There are two `Dataset`-like classes defined: `ProteinDataset` uses a character-
 Find the `ProteinDataset` and `BpeDataset` classes defined in `data.py`. An example of using the `ProteinDataset` class: 
 
 ```python 
-
+train_dataset = ProteinDataset(train_proteins, chars, max_word_length)
 ```
 
+### Transformer model 
 
-## Install 
+The model implemented here is a standard "decoder-only" transformer architecture
+("decoder-only" meaning that we use a triangular mask and ask the model to predict
+the next token). Following makemore, the implementation is totally spelled out in 
+Python code so we can see all the details. 
 
-Install with Conda 
+
+### Training loop 
+
+[To do]
+
+
+## Compute environment 
+
+To run the code locally on Metal, simply pass `--device mps` to the main script. 
+To install the dependencies (just PyTorch and Biotite, optionally Hugging Face
+tokenizers if needed)
 
 ```
-conda create --name protein python=3.11 
-conda activate protein 
-pip install tensorboard torch biotite 
+# virtual environment 
+python -m venv .venv 
+python -m pip install torch biotite tokenizers tensorboard 
 ```
 
-## Example: training on a homologous sequence family 
+## Training from scratch  
 
-As an example, we can use sequence homologs from the [BglB family](https://github.com/dacarlin/enzyme-ml-benchmarks) to train a protein transformer capable of designing new enzymes that fold and function the same way as the proteins in the training set 
+To instantiate a new model and train on a FASTA dataset, use the following command line. 
+The example dataset in the repo contains 26,878 homologs of HypF that are between 64 and
+128 residues in length and contain predicted catalytic residue sites from UniProt. 
 
-To train on a FASTA dataset: 
+To train a model on this dataset, use the following command: 
 
 ```
-python main.py -i dataset/bglb.fa -o bglb 
+python main.py -i hypf.da -o hypf 
 ```
 
 Once the model is trained, and you would like to sample (data will be written in FASTA format):
 
 ```
-python main.py -o bglb --sample-only 
+python main.py -o hypf --sample-only 
 ```
-
-## Model 
-
-The model used here is a transformer based on GPT-2, trained with a next-token completion task
-
 
 
 
