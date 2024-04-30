@@ -232,7 +232,7 @@ def print_samples(num=10):
     for lst, desc in groups:
         print(f"{len(lst)} samples that are {desc}:")
         for i, word in enumerate(lst):
-            header = f"sample {i + 1} {desc}"
+            header = f"sample_{i + 1} {desc}"
             print(f">{header}\n{word}")
     print("Done printing samples")
 
@@ -435,11 +435,6 @@ if __name__ == '__main__':
         weight_decay=args.weight_decay, 
         betas=(0.9, 0.99), eps=1e-8)
 
-    def cycle(loader):
-        while True:
-            for data in loader:
-                yield data
-
     train_loader = DataLoader(
         train_dataset, 
         batch_size=args.batch_size, 
@@ -496,5 +491,6 @@ if __name__ == '__main__':
         step += 1
         # termination conditions
         if args.max_steps >= 0 and step >= args.max_steps:
+            print_samples(num=10)  # do this a final time at the end 
             break
 
