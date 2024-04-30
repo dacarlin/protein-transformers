@@ -208,6 +208,7 @@ def print_samples(num=10):
     steps = train_dataset.get_output_length() - 1 # -1 because we already start with <START> token (index 0)
     X_samp = generate(model, X_init, steps, top_k=top_k, greedy=False).to('cpu')
     train_samples, test_samples, new_samples = [], [], []
+    
     for i in range(X_samp.size(0)):
         # get the i'th row of sampled integers, as python list
         row = X_samp[i, 1:].tolist() # note: we need to crop out the first <START> token
@@ -215,19 +216,25 @@ def print_samples(num=10):
         crop_index = row.index(0) if 0 in row else len(row)
         row = row[:crop_index]
         word_samp = train_dataset.decode(row)
-        # separately track samples that we have and have not seen before
+        
+        # better than this, calculate percent ID to each member of train set,
+        # but this entails alignment and expensive calculation, so just detect 
+        # 100% identity here 
         if train_dataset.contains(word_samp):
             train_samples.append(word_samp)
         elif test_dataset.contains(word_samp):
             test_samples.append(word_samp)
         else:
             new_samples.append(word_samp)
-    print('-'*80)
-    for lst, desc in [(train_samples, 'in train'), (test_samples, 'in test'), (new_samples, 'new')]:
+    
+    print(f"Printing {num} samples from the model:")
+    groups = [(train_samples, 'in train'), (test_samples, 'in test'), (new_samples, 'new')]
+    for lst, desc in groups:
         print(f"{len(lst)} samples that are {desc}:")
-        for word in lst:
-            print(word)
-    print('-'*80)
+        for i, word in enumerate(lst):
+            header = f"sample {i + 1} {desc}"
+            print(f">{header}\n{word}")
+    print("Done printing samples")
 
 
 @torch.inference_mode()
@@ -374,7 +381,7 @@ if __name__ == '__main__':
     # parse command line args
     parser = argparse.ArgumentParser(description="Make more proteins")
     # system/input/output
-    parser.add_argument('--input-file', '-i', type=str, default='proteins.fa', help="input fasta file")
+    parser.add_argument('--input-file', '-i', type=str, default='hypf.fa', help="input fasta file")
     parser.add_argument('--tokenizer', type=str, default=None, help="path of tokenizer json")
     parser.add_argument('--work-dir', '-o', type=str, default='out', help="output working directory")
     parser.add_argument('--resume', action='store_true', help="when this flag is used, we will resume optimization from existing model in the workdir")
