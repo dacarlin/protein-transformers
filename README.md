@@ -139,3 +139,34 @@ instance.
 This brings me to an important point, which is the importance of clustering your data when working with protein sequences. Here, we can see that while the train loss looks fine for each of the three training runs, at the 50% level, while the training loss goes to under 1.4, the test loss never goes below 1.6, and according to the test loss, the model has stopped learning around step 10k. 
 
 The correct level of clustering is an important hyperparameter when training sequence-based models such as this decoder-only transformer model trained on the HypF dataset. 
+
+## Folding some generated proteins 
+
+Just for fun, let's generate a couple of samples and fold them. 
+I picked this sample from the last checkpoint 
+
+```
+>sample
+MAREVKHLVIYGRVQGVGYRAWAENEAMGLGLEGWVRNRRDGSVEALVVGGPADVSAMITRCRHGPPTAGIVSLLEETCPDAGIPPSRGFKQLPTV
+```
+
+and [folded it with ESMFold](), and obtained this structure
+
+![alt text](img/example-folded.png)
+
+I then was interested to compare this to a crystal structure of 
+a homolog from the family. The crystal structure PDB code 1URR 
+is "novel _Drosophila melanogaster_ acylphosphatase" (Zuccotti+ 2004). 
+
+I found that the generated protein is only about 25% identical, 
+at a primary sequence level, to the sequence from 1URR. However, 
+after structural alignment in PyMOL, we can see that not only is 
+the generated sequence predicted to fold into the same overall fold
+as the real sequence from 1URR, but also both catalytic residues 
+are present and the correct identity (in the crystal, these are 
+R27 and N45). 
+
+![alt text](img/example-folded-crystal.png)
+
+**Superposition of generated protein 
+and crystal structure.** The crystal, in **gray**, is a acylphosphatase from _Drosophila melanogaster_ with PDB code 1URR. The generated protein, as folded by ESMFold, is depicted <span style="color:purple;">purple</span>. Figure drawn with PyMOL. 
