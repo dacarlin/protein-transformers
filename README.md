@@ -101,12 +101,12 @@ mmseqs createsubdb clust100 DB rep100
 mmseqs convert2fasta rep100 rep100.fa
 
 # 90% identity 
-mmseqs cluster -c 0.90 --min-seq-id 0.95 DB clust90 tmp
+mmseqs cluster -c 0.95 --min-seq-id 0.90 DB clust90 tmp
 mmseqs createsubdb clust90 DB rep90 
 mmseqs convert2fasta rep90 rep90.fa   
 
 # 50% identity 
-mmseqs cluster -c 0.50 --min-seq-id 0.80 DB clust50 tmp
+mmseqs cluster -c 0.80 --min-seq-id 0.50 DB clust50 tmp
 mmseqs createsubdb clust50 DB rep50 
 mmseqs convert2fasta rep50 rep50.fa   
 ```
