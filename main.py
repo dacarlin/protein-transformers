@@ -1,32 +1,9 @@
-"""Adapted from Karpathy's makemore. Thanks Andrej!
-
-you give this script some words (one per line) and it will generate more things like it.
-uses super state of the art Transformer AI tech
-this code is intended to be super hackable. tune it to your needs.
-
-Changes from makemore 
-- I removed models other than `Transformer` because they aren't necessary
-  to understand how to use transformer models for protein sequences 
-- I updated the dataloaders to work with FASTA files 
-- I updated the code to accept a HuggingFace tokenizer to explore 
-  different tokenization schemes 
-
-Changes from minGPT:
-- I removed the from_pretrained function where we init with GPT2 weights
-- I removed dropout layers because the models we train here are small,
-  it's not necessary to understand at this stage and at this scale.
-- I removed weight decay and all of the complexity around what parameters are
-  and are not weight decayed. I don't believe this should make a massive
-  difference at the scale that we operate on here.
-"""
-
 import os
 import sys
 import time
 import math
 import argparse
 from dataclasses import dataclass
-from typing import List
 
 import torch
 import torch.nn as nn
@@ -51,7 +28,6 @@ class ModelConfig:
 
 # -----------------------------------------------------------------------------
 # Transformer Language Model (*exactly* as used in GPT-2)
-
 class NewGELU(nn.Module):
     """
     Implementation of the GELU activation function currently in Google BERT repo (identical to OpenAI GPT).
@@ -253,8 +229,9 @@ def evaluate(model, dataset, batch_size=50, max_batches=None):
     model.train() # reset model back to training mode
     return mean_loss
 
+
 # ---------------------------------------------------------------------
-# Datasets for protein sequences and BytePair-encoded protein sequences 
+# Datasets for protein sequences 
 
 class ProteinDataset(Dataset):
     """Dataset for protein sequences with character-level tokenization"""
@@ -297,44 +274,7 @@ class ProteinDataset(Dataset):
         return x, y
 
 
-class BpeProteinDataset(Dataset):
-    """Dataset with BytePair-encoded protein sequences"""
-
-    def __init__(self, proteins, tokenizer, max_word_length):
-        self.proteins = proteins
-        self.tokenizer = tokenizer 
-        self.max_word_length = max_word_length
-
-    def __len__(self):
-        return len(self.proteins) 
-
-    def contains(self, word):
-        return word in self.proteins 
-
-    def get_vocab_size(self):
-        return self.tokenizer.get_vocab_size()
-
-    def get_output_length(self):
-        return self.max_word_length + 1 # <START> token followed by proteins
-
-    def encode(self, word):
-        return torch.tensor(self.tokenizer.encode(word).ids, dtype=torch.long)
-
-    def decode(self, ix):
-        return self.tokenizer.decode(ix).tokens
-
-    def __getitem__(self, idx):
-        word = self.proteins[idx]
-        ix = self.encode(word) 
-        x = torch.zeros(self.max_word_length + 1, dtype=torch.long)
-        y = torch.zeros(self.max_word_length + 1, dtype=torch.long)
-        x[1:1+len(ix)] = ix
-        y[:len(ix)] = ix
-        y[len(ix)+1:] = -1   # index -1 will mask the loss at inactive locations 
-        return x, y
-
-
-def create_datasets(input_file, tokenizer=None):
+def create_datasets(input_file):
 
     # preprocessing of the input text file
     proteins = []
@@ -350,26 +290,21 @@ def create_datasets(input_file, tokenizer=None):
     test_proteins = [proteins[i] for i in rp[-test_set_size:]]
     print(f"split up the dataset into {len(train_proteins)} training examples and {len(test_proteins)} test examples")
 
-    if not tokenizer:
-        chars = sorted(list(set(''.join(proteins)))) # all the possible characters
-        tokens = sum(len(w) for w in proteins)
-        
-        print("using characters as tokens")
-        print(f"number of examples in the dataset: {len(proteins)}")
-        print(f"max protein length: {max_word_length}")
-        print(f"number of unique characters in the vocabulary: {len(chars)}")
-        print("vocabulary:")
-        print(''.join(chars))
-        print(f"total tokens: {tokens}")
 
-        # wrap in dataset objects
-        train_dataset = ProteinDataset(train_proteins, chars, max_word_length)
-        test_dataset = ProteinDataset(test_proteins, chars, max_word_length)
-    else:
-        print(f"using tokenizer from: {tokenizer}") 
-        tokenizer = Tokenizer.from_file(tokenizer)
-        train_dataset = BpeProteinDataset(train_proteins, tokenizer, max_word_length) 
-        test_dataset = BpeProteinDataset(test_proteins, tokenizer, max_word_length) 
+    chars = sorted(list(set(''.join(proteins)))) # all the possible characters
+    tokens = sum(len(w) for w in proteins)
+    
+    print("using characters as tokens")
+    print(f"number of examples in the dataset: {len(proteins)}")
+    print(f"max protein length: {max_word_length}")
+    print(f"number of unique characters in the vocabulary: {len(chars)}")
+    print("vocabulary:")
+    print(''.join(chars))
+    print(f"total tokens: {tokens}")
+
+    # wrap in dataset objects
+    train_dataset = ProteinDataset(train_proteins, chars, max_word_length)
+    test_dataset = ProteinDataset(test_proteins, chars, max_word_length)
 
     return train_dataset, test_dataset
 
@@ -493,4 +428,3 @@ if __name__ == '__main__':
         if args.max_steps >= 0 and step >= args.max_steps:
             print_samples(num=10)  # do this a final time at the end 
             break
-
