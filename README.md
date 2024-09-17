@@ -1,34 +1,66 @@
-# Simple, hackable protein transformers 
+# Simple, hackable protein transformers from scratch 
 
 The goal of this project is to provide a simple, hackable implementation of protein transformer models for education and research. Inspired by Karpathy's simple, hackable approach in the [makemore](https://github.com/karpathy/makemore) series. 
 
+- [Simple, hackable protein transformers on GitHub]()
 
-## Code contents 
+## Tutorial/walkthrough videos 
 
-There are three main sections, all implemented in PyTorch:
+In addition to providing the implementation, we also provide a tutorial as a series of lecture videos that walk you through the creation of the dataset, models, training, evaluation, and scaling the protein language model. 
 
-- protein data loaders and tokenizers 
-- models (our first model is a "decoder only" transformer)
-- training loop 
+- [Lecture 1 video. Choosing a dataset and framing the problem]()
+- [Lecture 2 video. A simple neural network protein language model from scratch]()
+- [Lecture 3 video. Building the protein transformer model from scratch]()
+- [Lecture 4 video. Evaluating protein language models]()
+- [Lecture 5 video. Scaling protein transformers]()
+
+
+## Protein language model implementation 
+
+In addition to the lecture videos, a reference implementation is available on GitHub. There are three main sections, all implemented in PyTorch:
+
+- protein data loaders and tokenizers
+- protein transformer model
+- training and evaluating the model
+
+The model architecture is identical to that of GPT-2, except for the embedding dimension since we have a much smaller vocabulary. The code is [substantially based on Andrej Karpathy's implementation in the Makemore series](). In fact, the whole idea for this series is based on [Andrej's amazing lectures]().   
 
 
 ### Protein data loaders 
 
-There are two `Dataset`-like classes defined: `ProteinDataset` uses a character-level tokenizer (as used by ESM and all other protein language models I know about) and `BpeDataset`, which uses a BytePair encoding for tokenization. 
-
-Find the `ProteinDataset` and `BpeDataset` classes defined in `data.py`. An example of using the `ProteinDataset` class: 
+`ProteinDataset` uses a character-level tokenizer (as used by ESM and all other protein language models I know about). Find the `ProteinDataset` class defined in `data.py`. An example of using the `ProteinDataset` class: 
 
 ```python 
-train_dataset = ProteinDataset(train_proteins, chars, max_word_length)
+# example, some short proteins of length 38 
+
+proteins = [
+    "MCLLSLAAATVAARRTPLRLLGRGLAAAMSTAGPLKSV", 
+    "MSSQIKKSKTTTKKLVKSAPKSVPNAAADDQIFCCQFE", 
+    "MCLLSLAAATVAARRTPLRLLGRGLAAAMSTAGPLKSV", 
+]
+
+chars = "ACDEFGHIKLMNPQRSTVWY"
+
+max_length = 38 
+
+dataset = ProteinDataset(proteins, chars, max_length)
 ```
 
 ### Transformer model 
 
 The model implemented here is a standard "decoder-only" transformer architecture
-("decoder-only" meaning that we use a triangular mask and ask the model to predict
-the next token). Following makemore, the implementation is totally spelled out in 
-Python code so we can see all the details. 
+("decoder-only" meaning that we use a triangular mask and ask the model to predict the next token). Following makemore, the implementation is totally spelled out in Python code so we can see all the details. 
 
+- Amino acid tokens are embedded via a learned embedding table 
+- Causal multi-head attention is used to update the representation of each token 
+- New sequences are made via sampling from the token probabilities 
+
+```python 
+config = ModelConfig(vocab_size=20, block_size=3, 
+                     n_layer=4, n_head=4, embed_dim=100)
+                     
+model = Transformer(config)
+```
 
 ### Training loop 
 
@@ -43,27 +75,29 @@ Every so often, we evaluate the loss on a subset of the training set and a subse
   output by the language model during training. To do this, I use 
   ESMFold (either via `curl` or local install). ESMFold will 
   rapidly (a second or two) fold small proteins like those in the 
-  HypF example dataset so you can easily keep track of the folding
+  AcyP example dataset so you can easily keep track of the folding
   progress as the model trains 
 
 
-## Compute environment 
+## Tutorial: training a model from scratch on the AcyP dataset 
 
-To run the code locally on Metal, simply pass `--device mps` to the main script. 
-To install the dependencies (just PyTorch and Biotite, optionally Hugging Face
-tokenizers if needed)
+
+### Setting up your compute environment 
+
+To install all the dependencies at once (this is simple enough that I'll skip providing an environment file, but please feel free to open an issue if you have problems and we can update this): 
 
 ```
 # virtual environment 
 python -m venv .venv 
-python -m pip install torch biotite tokenizers tensorboard 
+python -m pip install torch biotite plotly 
 ```
 
-## Training from scratch  
+Everything works on CPU, MPS, and CUDA currently. For the videos, I am using the Fish shell and a vanilla Python 3.11 virtual environment. 
 
-To instantiate a new model and train on a FASTA dataset, use the following command line. 
-The example dataset in the repo contains 26,878 homologs of HypF that are between 64 and
-128 residues in length and contain predicted catalytic residue sites from UniProt. 
+
+### Training from scratch  
+
+To instantiate a new model and train on a FASTA dataset, use the following command line. The example dataset in the repo contains 26,878 homologs of AcyP that are between 64 and 128 residues in length and contain predicted catalytic residue sites from UniProt. 
 
 To train a model on this dataset, use the following command: 
 
@@ -77,7 +111,7 @@ Once the model is trained, and you would like to sample (data will be printed in
 python main.py -i hypf.fa -o hypf --sample-only 
 ```
 
-## Training example: the importance of clustering 
+### Clustering your input data for better results 
 
 Let's examine how different levels of input clustering change 
 the performance of a small transformer model. To do this, let's 
@@ -140,7 +174,7 @@ This brings me to an important point, which is the importance of clustering your
 
 The correct level of clustering is an important hyperparameter when training sequence-based models such as this decoder-only transformer model trained on the HypF dataset. 
 
-## Folding some generated proteins 
+### Folding some generated proteins 
 
 Just for fun, let's generate a couple of samples and fold them. 
 I picked this sample from the last checkpoint 

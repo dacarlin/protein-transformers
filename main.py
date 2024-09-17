@@ -23,7 +23,7 @@ class ModelConfig:
     vocab_size: int = None # the input integers are in range [0 .. vocab_size -1]
     # parameters below control the sizes of each model slightly differently
     n_layer: int = 4
-    n_embd: int = 64
+    embed_dim: int = 64
     n_head: int = 4
 
 # -----------------------------------------------------------------------------
@@ -46,22 +46,22 @@ class CausalSelfAttention(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        assert config.n_embd % config.n_head == 0
+        assert config.embed_dim % config.n_head == 0
         # key, query, value projections for all heads, but in a batch
-        self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd)
+        self.c_attn = nn.Linear(config.embed_dim, 3 * config.embed_dim)
         # output projection
-        self.c_proj = nn.Linear(config.n_embd, config.n_embd)
+        self.c_proj = nn.Linear(config.embed_dim, config.embed_dim)
         # causal mask to ensure that attention is only applied to the left in the input sequence
         self.register_buffer("bias", torch.tril(torch.ones(config.block_size, config.block_size))
                                      .view(1, 1, config.block_size, config.block_size))
         self.n_head = config.n_head
-        self.n_embd = config.n_embd
+        self.embed_dim = config.embed_dim
 
     def forward(self, x):
-        B, T, C = x.size() # batch size, sequence length, embedding dimensionality (n_embd)
+        B, T, C = x.size() # batch size, sequence length, embedding dimensionality (embed_dim)
 
         # calculate query, key, values for all heads in batch and move head forward to be the batch dim
-        q, k ,v  = self.c_attn(x).split(self.n_embd, dim=2)
+        q, k ,v  = self.c_attn(x).split(self.embed_dim, dim=2)
         k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
@@ -83,12 +83,12 @@ class Block(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        self.ln_1 = nn.LayerNorm(config.n_embd)
+        self.ln_1 = nn.LayerNorm(config.embed_dim)
         self.attn = CausalSelfAttention(config)
-        self.ln_2 = nn.LayerNorm(config.n_embd)
+        self.ln_2 = nn.LayerNorm(config.embed_dim)
         self.mlp = nn.ModuleDict(dict(
-            c_fc    = nn.Linear(config.n_embd, 4 * config.n_embd),
-            c_proj  = nn.Linear(4 * config.n_embd, config.n_embd),
+            c_fc    = nn.Linear(config.embed_dim, 4 * config.embed_dim),
+            c_proj  = nn.Linear(4 * config.embed_dim, config.embed_dim),
             act     = NewGELU(),
         ))
         m = self.mlp
@@ -108,12 +108,12 @@ class Transformer(nn.Module):
         self.block_size = config.block_size
 
         self.transformer = nn.ModuleDict(dict(
-            wte = nn.Embedding(config.vocab_size, config.n_embd),
-            wpe = nn.Embedding(config.block_size, config.n_embd),
+            wte = nn.Embedding(config.vocab_size, config.embed_dim),
+            wpe = nn.Embedding(config.block_size, config.embed_dim),
             h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
-            ln_f = nn.LayerNorm(config.n_embd),
+            ln_f = nn.LayerNorm(config.embed_dim),
         ))
-        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
+        self.lm_head = nn.Linear(config.embed_dim, config.vocab_size, bias=False)
 
         # report number of parameters (note we don't count the decoder parameters in lm_head)
         n_params = sum(p.numel() for p in self.transformer.parameters())
@@ -129,8 +129,8 @@ class Transformer(nn.Module):
         pos = torch.arange(0, t, dtype=torch.long, device=device).unsqueeze(0) # shape (1, t)
 
         # forward the GPT model itself
-        tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
-        pos_emb = self.transformer.wpe(pos) # position embeddings of shape (1, t, n_embd)
+        tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, embed_dim)
+        pos_emb = self.transformer.wpe(pos) # position embeddings of shape (1, t, embed_dim)
         x = tok_emb + pos_emb
         for block in self.transformer.h:
             x = block(x)
@@ -352,7 +352,7 @@ if __name__ == '__main__':
     # init model
     config = ModelConfig(vocab_size=vocab_size, block_size=block_size,
                        n_layer=args.n_layer, n_head=args.n_head,
-                       n_embd=args.n_embd)
+                       embed_dim=args.embed_dim)
     model = Transformer(config)
     model.to(args.device)
     print(f"model #params: {sum(p.numel() for p in model.parameters())}")
