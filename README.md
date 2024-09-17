@@ -8,6 +8,10 @@ The goal of this project is to provide a simple, hackable implementation of prot
 
 In addition to providing the implementation, we also provide a tutorial as a series of lecture videos that walk you through the creation of the dataset, models, training, evaluation, and scaling the protein language model. 
 
+- [Tutorial series outline for each lecture](LECTURES.md)
+
+Individual lecture videos: 
+
 - [Lecture 1 video. Choosing a dataset and framing the problem]()
 - [Lecture 2 video. A simple neural network protein language model from scratch]()
 - [Lecture 3 video. Building the protein transformer model from scratch]()
@@ -17,13 +21,13 @@ In addition to providing the implementation, we also provide a tutorial as a ser
 
 ## Protein language model implementation 
 
-In addition to the lecture videos, a reference implementation is available on GitHub. There are three main sections, all implemented in PyTorch:
+In addition to the lecture videos, a reference implementation is available on GitHub in this repository. There are three main sections, all implemented in PyTorch in the `main.py` file and the various lecture notebooks.
 
-- protein data loaders and tokenizers
-- protein transformer model
-- training and evaluating the model
+- Protein data loaders and tokenizers
+- Protein transformer model
+- Training and evaluating the model
 
-The model architecture is identical to that of GPT-2, except for the embedding dimension since we have a much smaller vocabulary. The code is [substantially based on Andrej Karpathy's implementation in the Makemore series](). In fact, the whole idea for this series is based on [Andrej's amazing lectures]().   
+The model architecture is identical to that of GPT-2, except for the embedding dimension since we have a much smaller vocabulary. The code is [substantially based on Andrej Karpathy's implementation in the Makemore series](). In fact, the whole idea for this series is based on [Andrej's amazing lectures](). Huge thanks and shout-out to Andrej for his inspiring work on the Neural Networks: Zero to Hero series! 
 
 
 ### Protein data loaders 
