@@ -1,24 +1,4 @@
-"""Adapted from Karpathy's makemore. Thanks Andrej!
-
-you give this script some words (one per line) and it will generate more things like it.
-uses super state of the art Transformer AI tech
-this code is intended to be super hackable. tune it to your needs.
-
-Changes from makemore 
-- I removed models other than `Transformer` because they aren't necessary
-  to understand how to use transformer models for protein sequences 
-- I updated the dataloaders to work with FASTA files 
-- I updated the code to accept a HuggingFace tokenizer to explore 
-  different tokenization schemes 
-
-Changes from minGPT:
-- I removed the from_pretrained function where we init with GPT2 weights
-- I removed dropout layers because the models we train here are small,
-  it's not necessary to understand at this stage and at this scale.
-- I removed weight decay and all of the complexity around what parameters are
-  and are not weight decayed. I don't believe this should make a massive
-  difference at the scale that we operate on here.
-"""
+"""Adapted from Karpathy's makemore. Thanks Andrej!"""
 
 import os
 import sys
@@ -41,10 +21,9 @@ from biotite.sequence.io.fasta import FastaFile
 @dataclass
 class ModelConfig:
     block_size: int = None # length of the input sequences of integers
-    vocab_size: int = None # the input integers are in range [0 .. vocab_size -1]
-    # parameters below control the sizes of each model slightly differently
+    vocab_size: int = None # the input integers are in range [0 .. vocab_size -1] 
     n_layer: int = 4
-    n_embd: int = 64
+    embed_dim: int = 64
     n_head: int = 4
 
 # -----------------------------------------------------------------------------
@@ -68,22 +47,22 @@ class CausalSelfAttention(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        assert config.n_embd % config.n_head == 0
+        assert config.embed_dim % config.n_head == 0
         # key, query, value projections for all heads, but in a batch
-        self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd)
+        self.c_attn = nn.Linear(config.embed_dim, 3 * config.embed_dim)
         # output projection
-        self.c_proj = nn.Linear(config.n_embd, config.n_embd)
+        self.c_proj = nn.Linear(config.embed_dim, config.embed_dim)
         # causal mask to ensure that attention is only applied to the left in the input sequence
         self.register_buffer("bias", torch.tril(torch.ones(config.block_size, config.block_size))
                                      .view(1, 1, config.block_size, config.block_size))
         self.n_head = config.n_head
-        self.n_embd = config.n_embd
+        self.embed_dim = config.embed_dim
 
     def forward(self, x):
-        B, T, C = x.size() # batch size, sequence length, embedding dimensionality (n_embd)
+        B, T, C = x.size() # batch size, sequence length, embedding dimensionality (embed_dim)
 
         # calculate query, key, values for all heads in batch and move head forward to be the batch dim
-        q, k ,v  = self.c_attn(x).split(self.n_embd, dim=2)
+        q, k ,v  = self.c_attn(x).split(self.embed_dim, dim=2)
         k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
@@ -105,13 +84,13 @@ class Block(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        self.ln_1 = nn.LayerNorm(config.n_embd)
+        self.ln_1 = nn.LayerNorm(config.embed_dim)
         self.attn = CausalSelfAttention(config)
-        self.ln_2 = nn.LayerNorm(config.n_embd)
+        self.ln_2 = nn.LayerNorm(config.embed_dim)
         self.mlp = nn.ModuleDict(dict(
-            c_fc    = nn.Linear(config.n_embd, 4 * config.n_embd),
-            c_proj  = nn.Linear(4 * config.n_embd, config.n_embd),
-            act     = NewGELU(),
+            c_fc    = nn.Linear(config.embed_dim, 4 * config.embed_dim),
+            c_proj  = nn.Linear(4 * config.embed_dim, config.embed_dim),
+            act     = nn.GELU(approximate="tanh"), 
         ))
         m = self.mlp
         self.mlpf = lambda x: m.c_proj(m.act(m.c_fc(x))) # MLP forward
@@ -130,12 +109,12 @@ class Transformer(nn.Module):
         self.block_size = config.block_size
 
         self.transformer = nn.ModuleDict(dict(
-            wte = nn.Embedding(config.vocab_size, config.n_embd),
-            wpe = nn.Embedding(config.block_size, config.n_embd),
+            wte = nn.Embedding(config.vocab_size, config.embed_dim),
+            wpe = nn.Embedding(config.block_size, config.embed_dim),
             h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
-            ln_f = nn.LayerNorm(config.n_embd),
+            ln_f = nn.LayerNorm(config.embed_dim),
         ))
-        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
+        self.lm_head = nn.Linear(config.embed_dim, config.vocab_size, bias=False)
 
         # report number of parameters (note we don't count the decoder parameters in lm_head)
         n_params = sum(p.numel() for p in self.transformer.parameters())
@@ -151,8 +130,8 @@ class Transformer(nn.Module):
         pos = torch.arange(0, t, dtype=torch.long, device=device).unsqueeze(0) # shape (1, t)
 
         # forward the GPT model itself
-        tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
-        pos_emb = self.transformer.wpe(pos) # position embeddings of shape (1, t, n_embd)
+        tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, embed_dim)
+        pos_emb = self.transformer.wpe(pos) # position embeddings of shape (1, t, embed_dim)
         x = tok_emb + pos_emb
         for block in self.transformer.h:
             x = block(x)
@@ -351,7 +330,7 @@ if __name__ == '__main__':
     # model
     parser.add_argument('--n-layer', type=int, default=4, help="number of layers")
     parser.add_argument('--n-head', type=int, default=4, help="number of heads")
-    parser.add_argument('--n-embd', type=int, default=64, help="number of feature channels in the model")
+    parser.add_argument('--embed-dim', type=int, default=64, help="number of feature channels in the model")
     # optimization
     parser.add_argument('--batch-size', '-b', type=int, default=32, help="batch size during optimization")
     parser.add_argument('--learning-rate', '-l', type=float, default=4e-3, help="learning rate")
@@ -374,7 +353,7 @@ if __name__ == '__main__':
     # init model
     config = ModelConfig(vocab_size=vocab_size, block_size=block_size,
                        n_layer=args.n_layer, n_head=args.n_head,
-                       n_embd=args.n_embd)
+                       embed_dim=args.embed_dim)
     model = Transformer(config)
     model.to(args.device)
     print(f"model #params: {sum(p.numel() for p in model.parameters())}")
