@@ -1,8 +1,8 @@
 # Simple, hackable protein transformers from scratch 
 
-The goal of this project is to provide a simple, hackable implementation of protein transformer models for education and research. Inspired by Karpathy's simple, hackable approach in the [makemore](https://github.com/karpathy/makemore) series. 
+The goal of this project is to provide a simple, hackable implementation of protein transformer models for education and research. Inspired by Andrej Karpathy's simple, hackable approach in the [makemore](https://github.com/karpathy/makemore) series. 
 
-- [Simple, hackable protein transformers on GitHub]()
+- [Simple, hackable protein transformers on GitHub](https://github.com/dacarlin/protein-transformers)
 
 ## Tutorial/walkthrough videos 
 
@@ -12,7 +12,7 @@ In addition to providing the implementation, we also provide a tutorial as a ser
 
 Individual lecture videos: 
 
-- [Lecture 1 video. Choosing a dataset and framing the problem]()
+- [Lecture 1 video. Choosing a dataset for protein modeling and framing the problem]()
 - [Lecture 2 video. A simple neural network protein language model from scratch]()
 - [Lecture 3 video. Building the protein transformer model from scratch]()
 - [Lecture 4 video. Evaluating protein language models]()
