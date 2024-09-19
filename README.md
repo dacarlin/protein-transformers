@@ -3,31 +3,52 @@
 The goal of this project is to provide a simple, hackable implementation of protein transformer models for education and research. Inspired by Karpathy's simple, hackable approach in the [makemore](https://github.com/karpathy/makemore) series. 
 
 
-## Code contents 
+## Video lectures 
+
+In this series of video lectures, we build a protein transformer from scratch and walk through the training and evaluation described below
+
+- [Protein transformers from scratch](https://www.youtube.com/watch?v=c2kFHtuEt8s&list=PLto3jFYD7cGhYbTKMSeZwr9ru8nRFOIv9&pp=iAQB) (5 lectures)
+
+
+## Protein transformer implementation 
+
+### Code organization 
 
 There are three main sections, all implemented in PyTorch:
 
 - protein data loaders and tokenizers 
-- models (our first model is a "decoder only" transformer)
+- models ("decoder only" transformer)
 - training loop 
 
 
 ### Protein data loaders 
 
-There are two `Dataset`-like classes defined: `ProteinDataset` uses a character-level tokenizer (as used by ESM and all other protein language models I know about) and `BpeDataset`, which uses a BytePair encoding for tokenization. 
-
-Find the `ProteinDataset` and `BpeDataset` classes defined in `data.py`. An example of using the `ProteinDataset` class: 
+The provided `ProteinDataset` uses a character-level tokenizer (as used by ESM and all other protein language models I know about) and is defined in `data.py`. An example of using the `ProteinDataset` class: 
 
 ```python 
-train_dataset = ProteinDataset(train_proteins, chars, max_word_length)
+proteins = [
+    "MCLLSLAAATVAARRTPLRLLGRGLAAAMSTAGPLKSV", 
+    "MSSQIKKSKTTTKKLVKSAPKSVPNAAADDQIFCCQFE", 
+    "MCLLSLAAATVAARRTPLRLLGRGLAAAMSTAGPLKSV", 
+]
+
+chars = "ACDEFGHIKLMNPQRSTVWY"
+
+max_length = 38 
+
+dataset = ProteinDataset(proteins, chars, max_length)
 ```
 
 ### Transformer model 
 
-The model implemented here is a standard "decoder-only" transformer architecture
-("decoder-only" meaning that we use a triangular mask and ask the model to predict
-the next token). Following makemore, the implementation is totally spelled out in 
-Python code so we can see all the details. 
+The model implemented here is a standard "decoder-only" transformer architecture ("decoder-only" meaning that we use a triangular mask and ask the model to predict the next token). Following makemore, the implementation is totally spelled out in Python code so we can see all the details. 
+
+```python
+config = ModelConfig(vocab_size=20, block_size=128,
+                     n_layer=4, n_head=4, embed_dim=64)
+
+model = Transformer(config)
+```
 
 
 ### Training loop 
@@ -43,7 +64,7 @@ Every so often, we evaluate the loss on a subset of the training set and a subse
   output by the language model during training. To do this, I use 
   ESMFold (either via `curl` or local install). ESMFold will 
   rapidly (a second or two) fold small proteins like those in the 
-  HypF example dataset so you can easily keep track of the folding
+  AcyP example dataset so you can easily keep track of the folding
   progress as the model trains 
 
 
@@ -56,25 +77,25 @@ tokenizers if needed)
 ```
 # virtual environment 
 python -m venv .venv 
-python -m pip install torch biotite tokenizers tensorboard 
+python -m pip install torch rich biotite plotly tensorboard 
 ```
 
 ## Training from scratch  
 
 To instantiate a new model and train on a FASTA dataset, use the following command line. 
-The example dataset in the repo contains 26,878 homologs of HypF that are between 64 and
+The example dataset in the repo contains 26,878 homologs of AcyP that are between 64 and
 128 residues in length and contain predicted catalytic residue sites from UniProt. 
 
 To train a model on this dataset, use the following command: 
 
 ```
-python main.py -i hypf.fa -o hypf 
+python main.py -i acyp.fa -o acyp 
 ```
 
 Once the model is trained, and you would like to sample (data will be printed in FASTA format):
 
 ```
-python main.py -i hypf.fa -o hypf --sample-only 
+python main.py -i acyp.fa -o acyp --sample-only 
 ```
 
 ## Training example: the importance of clustering 
@@ -84,7 +105,7 @@ the performance of a small transformer model. To do this, let's
 create a small model and then train it on the same dataset, 
 clustered to different levels of sequence identity with MMseqs2. 
 
-We'll start with a dataset of HypF homologs that I collected from 
+We'll start with a dataset of AcyP homologs that I collected from 
 UniProt. See the [preprocessing notebook for details](preprocessing.ipynb). 
 
 Let's cluster the dataset at three different levels: at 100%, 
@@ -93,7 +114,7 @@ samples
 
 ```bash 
 # create an mmseqs db 
-mmseqs createdb hypf.fa DB 
+mmseqs createdb acyp.fa DB 
 
 # cluster to 100% identity 
 mmseqs cluster -c 1.00 --min-seq-id 1.00 DB clust100 tmp
@@ -138,7 +159,7 @@ instance.
 
 This brings me to an important point, which is the importance of clustering your data when working with protein sequences. Here, we can see that while the train loss looks fine for each of the three training runs, at the 50% level, while the training loss goes to under 1.4, the test loss never goes below 1.6, and according to the test loss, the model has stopped learning around step 10k. 
 
-The correct level of clustering is an important hyperparameter when training sequence-based models such as this decoder-only transformer model trained on the HypF dataset. 
+The correct level of clustering is an important hyperparameter when training sequence-based models such as this decoder-only transformer model trained on the AcyP dataset. 
 
 ## Folding some generated proteins 
 

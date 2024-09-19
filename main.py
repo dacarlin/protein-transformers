@@ -26,7 +26,6 @@ import time
 import math
 import argparse
 from dataclasses import dataclass
-from typing import List
 
 import torch
 import torch.nn as nn
@@ -35,7 +34,6 @@ from torch.utils.data import Dataset
 from torch.utils.data.dataloader import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from biotite.sequence.io.fasta import FastaFile 
-from tokenizers import Tokenizer
 
 
 # -----------------------------------------------------------------------------
@@ -297,44 +295,10 @@ class ProteinDataset(Dataset):
         return x, y
 
 
-class BpeProteinDataset(Dataset):
-    """Dataset with BytePair-encoded protein sequences"""
-
-    def __init__(self, proteins, tokenizer, max_word_length):
-        self.proteins = proteins
-        self.tokenizer = tokenizer 
-        self.max_word_length = max_word_length
-
-    def __len__(self):
-        return len(self.proteins) 
-
-    def contains(self, word):
-        return word in self.proteins 
-
-    def get_vocab_size(self):
-        return self.tokenizer.get_vocab_size()
-
-    def get_output_length(self):
-        return self.max_word_length + 1 # <START> token followed by proteins
-
-    def encode(self, word):
-        return torch.tensor(self.tokenizer.encode(word).ids, dtype=torch.long)
-
-    def decode(self, ix):
-        return self.tokenizer.decode(ix).tokens
-
-    def __getitem__(self, idx):
-        word = self.proteins[idx]
-        ix = self.encode(word) 
-        x = torch.zeros(self.max_word_length + 1, dtype=torch.long)
-        y = torch.zeros(self.max_word_length + 1, dtype=torch.long)
-        x[1:1+len(ix)] = ix
-        y[:len(ix)] = ix
-        y[len(ix)+1:] = -1   # index -1 will mask the loss at inactive locations 
-        return x, y
 
 
-def create_datasets(input_file, tokenizer=None):
+
+def create_datasets(input_file):
 
     # preprocessing of the input text file
     proteins = []
@@ -350,26 +314,20 @@ def create_datasets(input_file, tokenizer=None):
     test_proteins = [proteins[i] for i in rp[-test_set_size:]]
     print(f"split up the dataset into {len(train_proteins)} training examples and {len(test_proteins)} test examples")
 
-    if not tokenizer:
-        chars = sorted(list(set(''.join(proteins)))) # all the possible characters
-        tokens = sum(len(w) for w in proteins)
-        
-        print("using characters as tokens")
-        print(f"number of examples in the dataset: {len(proteins)}")
-        print(f"max protein length: {max_word_length}")
-        print(f"number of unique characters in the vocabulary: {len(chars)}")
-        print("vocabulary:")
-        print(''.join(chars))
-        print(f"total tokens: {tokens}")
+    chars = sorted(list(set(''.join(proteins)))) # all the possible characters
+    tokens = sum(len(w) for w in proteins)
+    
+    print("using characters as tokens")
+    print(f"number of examples in the dataset: {len(proteins)}")
+    print(f"max protein length: {max_word_length}")
+    print(f"number of unique characters in the vocabulary: {len(chars)}")
+    print("vocabulary:")
+    print(''.join(chars))
+    print(f"total tokens: {tokens}")
 
-        # wrap in dataset objects
-        train_dataset = ProteinDataset(train_proteins, chars, max_word_length)
-        test_dataset = ProteinDataset(test_proteins, chars, max_word_length)
-    else:
-        print(f"using tokenizer from: {tokenizer}") 
-        tokenizer = Tokenizer.from_file(tokenizer)
-        train_dataset = BpeProteinDataset(train_proteins, tokenizer, max_word_length) 
-        test_dataset = BpeProteinDataset(test_proteins, tokenizer, max_word_length) 
+    # wrap in dataset objects
+    train_dataset = ProteinDataset(train_proteins, chars, max_word_length)
+    test_dataset = ProteinDataset(test_proteins, chars, max_word_length)
 
     return train_dataset, test_dataset
 
@@ -382,7 +340,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Make more proteins")
     # system/input/output
     parser.add_argument('--input-file', '-i', type=str, default='hypf.fa', help="input fasta file")
-    parser.add_argument('--tokenizer', type=str, default=None, help="path of tokenizer json")
     parser.add_argument('--work-dir', '-o', type=str, default='out', help="output working directory")
     parser.add_argument('--resume', action='store_true', help="when this flag is used, we will resume optimization from existing model in the workdir")
     parser.add_argument('--sample-only', action='store_true', help="just sample from the model and quit, don't train")
@@ -409,7 +366,7 @@ if __name__ == '__main__':
     writer = SummaryWriter(log_dir=args.work_dir)
 
     # init datasets
-    train_dataset, test_dataset = create_datasets(args.input_file, tokenizer=args.tokenizer)
+    train_dataset, test_dataset = create_datasets(args.input_file)
     vocab_size = train_dataset.get_vocab_size()
     block_size = train_dataset.get_output_length()
     print(f"dataset determined that: {vocab_size=}, {block_size=}")
