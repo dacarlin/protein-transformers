@@ -14,10 +14,9 @@ from torch.utils.data import Dataset
 from torch.utils.data.dataloader import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from biotite.sequence.io.fasta import FastaFile 
+from einops import rearrange
 
 
-# -----------------------------------------------------------------------------
-# Configuration class 
 @dataclass
 class ModelConfig:
     block_size: int = None # length of the input sequences of integers
@@ -26,8 +25,6 @@ class ModelConfig:
     embed_dim: int = 64
     n_head: int = 4
 
-# -----------------------------------------------------------------------------
-# Transformer Language Model (*exactly* as used in GPT-2)
 
 class NewGELU(nn.Module):
     """
@@ -40,9 +37,8 @@ class NewGELU(nn.Module):
 
 class CausalSelfAttention(nn.Module):
     """
-    A vanilla multi-head masked self-attention layer with a projection at the end.
-    It is possible to use torch.nn.MultiheadAttention here but I am including an
-    explicit implementation here to show that there is nothing too scary here.
+    A vanilla multi-head masked self-attention layer with a projection at the end, 
+    similar to nn.MultiHeadAttention 
     """
 
     def __init__(self, config):
@@ -62,9 +58,10 @@ class CausalSelfAttention(nn.Module):
         B, T, C = x.size() # batch size, sequence length, embedding dimensionality (embed_dim)
 
         # calculate query, key, values for all heads in batch and move head forward to be the batch dim
-        q, k ,v  = self.c_attn(x).split(self.embed_dim, dim=2)
-        k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
+        q, k, v  = self.c_attn(x).split(self.embed_dim, dim=2)
         q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
+        k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
+        #k = rearrange(k, "b t (h c) -> b h t c", h=4)
         v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
 
         # causal self-attention; Self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)
@@ -72,8 +69,9 @@ class CausalSelfAttention(nn.Module):
         att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))
         att = F.softmax(att, dim=-1)
         y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
-        y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side
-
+        #y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side
+        y = rearrange(y, "b h t c -> b t (h c)")
+        
         # output projection
         y = self.c_proj(y)
         return y
@@ -230,8 +228,6 @@ def evaluate(model, dataset, batch_size=50, max_batches=None):
     model.train() # reset model back to training mode
     return mean_loss
 
-# ---------------------------------------------------------------------
-# Datasets for protein sequences and BytePair-encoded protein sequences 
 
 class ProteinDataset(Dataset):
     """Dataset for protein sequences with character-level tokenization"""
@@ -274,9 +270,6 @@ class ProteinDataset(Dataset):
         return x, y
 
 
-
-
-
 def create_datasets(input_file):
 
     # preprocessing of the input text file
@@ -311,8 +304,6 @@ def create_datasets(input_file):
     return train_dataset, test_dataset
 
 
-# -----------------------------------------------------------------------------
-# Parse arguments and run the training loop 
 if __name__ == '__main__':
 
     # parse command line args
